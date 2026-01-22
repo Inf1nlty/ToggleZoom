@@ -1,4 +1,3 @@
 accessWidener v1 named
 accessible field net/minecraft/src/EntityPlayer username Ljava/lang/String;
 accessible field net/minecraft/src/RenderPlayer isSlimSkinMap Ljava/util/Map;
-accessible field btw/client/mojapi/ProfileUtils USER_PROFILE_CACHE Ljava/util/concurrent/ConcurrentHashMap;
