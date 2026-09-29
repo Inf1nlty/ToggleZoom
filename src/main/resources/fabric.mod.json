@@ -27,7 +27,7 @@
   "mixins": [
     "togglezoom.mixins.json"
   ],
-  "accessWidener" : "togglezoom.accessWidener",
+  "accessWidener" : "togglezoom.accesswidener",
   "depends": {
     "fabricloader": ">=0.14.19",
     "minecraft": "1.6.4"

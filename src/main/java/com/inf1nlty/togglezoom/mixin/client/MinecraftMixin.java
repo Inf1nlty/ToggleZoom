@@ -2,11 +2,15 @@ package com.inf1nlty.togglezoom.mixin.client;
 
 import com.inf1nlty.togglezoom.util.KeyBindings;
 import com.inf1nlty.togglezoom.util.ZoomStateAccessor;
-import net.minecraft.src.*;
+import net.minecraft.src.EntityRenderer;
+import net.minecraft.src.GameSettings;
+import net.minecraft.src.GuiScreen;
+import net.minecraft.src.Minecraft;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -14,36 +18,44 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
 public class MinecraftMixin {
+
     @Shadow public GameSettings gameSettings;
+
     @Shadow public GuiScreen currentScreen;
+
     @Shadow public EntityRenderer entityRenderer;
 
-    @Shadow public EntityClientPlayerMP thePlayer;
-    private boolean wasZooming = false;
-    private float originalFov = 0.0f;
+    @Unique
+    private boolean zoom$holdFovApplied;
 
-    @Redirect(
-            method = "runTick", at = @At(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;getEventDWheel()I"))
+    @Unique
+    private float zoom$originalFov;
+
+    @Redirect(method = "runTick", at = @At(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;getEventDWheel()I", remap = false))
     private int nmBlockHotbarScrollWhenZoom() {
-        if (entityRenderer instanceof ZoomStateAccessor accessor) {
-            if (accessor.zoom$isToggleZoomActive() && accessor.zoom$isToggleZoomKeyHeld()) {
-                return 0;
-            }
+        ZoomStateAccessor accessor = (ZoomStateAccessor)this.entityRenderer;
+
+        if (accessor.zoom$isToggleZoomActive() && accessor.zoom$isToggleZoomKeyHeld()) {
+            return 0;
         }
+
         return Mouse.getEventDWheel();
     }
 
-    @Inject(method = "screenshotListener", at = @At(value = "HEAD"))
-    private void manageKeybinds(CallbackInfo ci) {
+    @Inject(method = "runGameLoop", at = @At(value = "INVOKE", target = "Lnet/minecraft/src/EntityRenderer;updateCameraAndRender(F)V"))
+    private void zoom$applyHoldFov(CallbackInfo ci) {
         if (Keyboard.isKeyDown(KeyBindings.ZoomHold.keyCode) && this.currentScreen == null) {
-            if (!this.wasZooming) {
-                this.originalFov = this.gameSettings.fovSetting;
-                this.wasZooming = true;
-            }
-            this.gameSettings.fovSetting = -1.2f;
-        } else if (this.wasZooming) {
-            this.gameSettings.fovSetting = originalFov;
-            this.wasZooming = false;
+            this.zoom$originalFov = this.gameSettings.fovSetting;
+            this.gameSettings.fovSetting = this.zoom$originalFov > 1.0F ? 22.0F : -1.2F;
+            this.zoom$holdFovApplied = true;
+        }
+    }
+
+    @Inject(method = "runGameLoop", at = @At(value = "INVOKE", target = "Lnet/minecraft/src/EntityRenderer;updateCameraAndRender(F)V", shift = At.Shift.AFTER))
+    private void zoom$restoreHoldFov(CallbackInfo ci) {
+        if (this.zoom$holdFovApplied) {
+            this.gameSettings.fovSetting = this.zoom$originalFov;
+            this.zoom$holdFovApplied = false;
         }
     }
 }

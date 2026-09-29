@@ -2,51 +2,40 @@ package com.inf1nlty.togglezoom.mixin.client;
 
 import com.inf1nlty.togglezoom.util.KeyBindings;
 import com.inf1nlty.togglezoom.util.ZoomStateAccessor;
-import net.minecraft.src.*;
+import net.minecraft.src.EntityRenderer;
+import net.minecraft.src.Minecraft;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.GL11;
-import org.spongepowered.asm.mixin.*;
-import org.spongepowered.asm.mixin.injection.*;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Constant;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(EntityRenderer.class)
 public abstract class EntityRendererMixin implements ZoomStateAccessor {
+
+    @Unique
+    private static final double zoom$defaultZoom = 4.0D;
+
     @Shadow
     private Minecraft mc;
-    @Shadow
-    private double cameraZoom;
-    @Shadow
-    private float farPlaneDistance;
-    @Shadow
-    public ItemRenderer itemRenderer;
+
     @Unique
-    private boolean ToggleZoomActive = false;
+    private boolean zoom$toggleActive;
+
     @Unique
-    private boolean ToggleToggleZoomKeyWasDown = false;
+    private boolean zoom$toggleKeyWasDown;
+
     @Unique
-    private double targetZoom = 1.0D;
-    //    @Unique private double lastZoomLevel = 4.0D;
-
-    @Shadow
-    protected abstract void hurtCameraEffect(float partialTicks);
-
-    @Shadow
-    protected abstract void setupViewBobbing(float partialTicks);
-
-    @Shadow
-    protected abstract void enableLightmap(double partialTicks);
-
-    @Shadow
-    protected abstract void disableLightmap(double partialTicks);
-
-    @Shadow
-    protected abstract float getFOVModifier(float partialTicks, boolean useFOVSetting);
+    private double zoom$targetZoom = 1.0D;
 
     @Override
     public boolean zoom$isToggleZoomActive() {
-        return ToggleZoomActive;
+        return this.zoom$toggleActive;
     }
 
     @Override
@@ -54,146 +43,70 @@ public abstract class EntityRendererMixin implements ZoomStateAccessor {
         return Keyboard.isKeyDown(KeyBindings.ZoomToggle.keyCode);
     }
 
-    @Inject(method = "updateCameraAndRender", at = @At("HEAD"))
-    private void zoom$injectZoomCamera(float partialTicks, CallbackInfo ci) {
-        if (mc == null || mc.thePlayer == null) return;
+    @Override
+    public double zoom$getTargetZoom() {
+        return this.zoom$toggleActive ? this.zoom$targetZoom : 1.0D;
+    }
 
+    @Inject(method = "updateCameraAndRender", at = @At("HEAD"))
+    private void zoom$updateToggleState(float partialTicks, CallbackInfo ci) {
         boolean zoomKeyDown = Keyboard.isKeyDown(KeyBindings.ZoomToggle.keyCode);
+
         // toggle
-        if (zoomKeyDown && !ToggleToggleZoomKeyWasDown && mc.currentScreen == null) {
-            ToggleZoomActive = !ToggleZoomActive;
-            targetZoom = ToggleZoomActive ? 4.0D : 1.0D;
+        if (zoomKeyDown && !this.zoom$toggleKeyWasDown && this.mc.currentScreen == null) {
+            this.zoom$toggleActive = !this.zoom$toggleActive;
+            this.zoom$targetZoom = this.zoom$toggleActive ? zoom$defaultZoom : 1.0D;
         }
-        ToggleToggleZoomKeyWasDown = zoomKeyDown;
+
+        this.zoom$toggleKeyWasDown = zoomKeyDown;
 
         // Allow scroll wheel to set zoom only in the frame just activated
-        if (ToggleZoomActive && zoomKeyDown) {
+        if (this.zoom$toggleActive && zoomKeyDown && this.mc.currentScreen == null) {
             int wheel = Mouse.getDWheel();
-            if (wheel != 0 && mc.currentScreen == null) {
-                double step;
-                if (targetZoom >= 12.0D) {
-                    step = 2.0D;
-                } else if (targetZoom >= 8.0D) {
-                    step = 1.5D;
-                } else if (targetZoom >= 4.0D) {
-                    step = 1.0D;
-                } else if (targetZoom >= 1.5D) {
-                    step = 0.25D;
-                } else {
-                    step = 0.1D;
-                }
-                if (wheel > 0) {
-                    targetZoom += step;
-                } else {
-                    targetZoom -= step;
-                }
-                if (targetZoom < 1.0D) targetZoom = 1.0D;
-                if (targetZoom > 32.0D) targetZoom = 32.0D;
-//                lastZoomLevel = targetZoom;
-            }
-        }
-        double absDelta = Math.abs(targetZoom - cameraZoom);
-        if (targetZoom > 1.0D) {
-            double lerpSpeed = Math.min(0.04, Math.max(0.008, absDelta * 0.02));
-            if (absDelta > 0.01D) {
-                cameraZoom += (targetZoom - cameraZoom) * lerpSpeed;
-            } else {
-                cameraZoom = targetZoom;
-            }
-        } else {
-            double lerpSpeed = Math.min(0.14, Math.max(0.03, absDelta * 0.10));
-            if (absDelta > 0.001D) {
-                cameraZoom += (targetZoom - cameraZoom) * lerpSpeed;
-            } else {
-                cameraZoom = targetZoom;
-            }
-        }
-    }
 
-    @Inject(method = "renderHand(FI)V", at = @At(
-            value = "INVOKE",
-            target = "Lorg/lwjgl/util/glu/Project;gluPerspective(FFFF)V",
-            shift = At.Shift.AFTER
-    ))
-    private void zoom$scaleViewmodel(float partialTicks, int pass, CallbackInfo ci) {
-        float zoom = (float) cameraZoom;
-        if (zoom != 1.0F) {
-            GL11.glScalef(zoom, zoom, zoom);
-        }
-    }
-
-    @Inject(method = "getFOVModifier(FZ)F", at = @At("RETURN"), cancellable = true)
-    private void zoom$setZoomFOV(float par1, boolean par2, CallbackInfoReturnable<Float> cir) {
-        float fov = cir.getReturnValue();
-        float zoom = (float) cameraZoom;
-        if (zoom != 1.0F) {
-            cir.setReturnValue(fov / zoom);
+            if (wheel != 0) {
+                double step = this.zoom$getScrollStep();
+                this.zoom$targetZoom += wheel > 0 ? step : -step;
+                this.zoom$targetZoom = Math.max(1.0D, Math.min(32.0D, this.zoom$targetZoom));
+            }
         }
     }
 
     /**
-     * Force render hand when zoomed by injecting after the zoom check
+     * Reduce mouse sensitivity in proportion to the active zoom level.
      */
-    @Inject(method = "renderWorld", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL11;glClear(I)V", shift = At.Shift.AFTER))
-    private void zoom$forceRenderHandWhenZoomed(float partialTicks, long timeSlice, CallbackInfo ci) {
-        // Check if we're in a zoom state and the normal hand rendering was skipped
-        if (this.cameraZoom != 1.0D) {
-            // Render hand manually when zoomed
-            this.zoom$renderHandForZoom(partialTicks, 0);
+    @ModifyConstant(method = "updateCameraAndRender", constant = @Constant(floatValue = 8.0F))
+    private float zoom$scaleMouseSensitivity(float originalScale) {
+        double zoom = this.zoom$getTargetZoom();
+
+        if (zoom == 1.0D) {
+            return originalScale;
         }
+
+        return originalScale / (float)zoom;
     }
 
     /**
-     * Custom hand rendering method for zoom
+     * Preserve the original variable scroll increments across the supported zoom range.
      */
     @Unique
-    private void zoom$renderHandForZoom(float partialTicks, int pass) {
-        if (this.mc.gameSettings.thirdPersonView == 0 && !this.mc.renderViewEntity.isPlayerSleeping() && !this.mc.gameSettings.hideGUI && !this.mc.playerController.enableEverythingIsScrewedUpMode()) {
-            GL11.glMatrixMode(5889);
-            GL11.glLoadIdentity();
-            float var3 = 0.07F;
-            if (this.mc.gameSettings.anaglyph) {
-                GL11.glTranslatef((float) (-(pass * 2 - 1)) * var3, 0.0F, 0.0F);
-            }
-
-            if (this.cameraZoom != 1.0D) {
-                GL11.glTranslatef((float) 0, (float) 0, 0.0F);
-                GL11.glScaled(this.cameraZoom, this.cameraZoom, 1.0D);
-            }
-
-            org.lwjgl.util.glu.Project.gluPerspective(this.getFOVModifier(partialTicks, false), (float) this.mc.displayWidth / (float) this.mc.displayHeight, 0.05F, this.farPlaneDistance * 2.0F);
-
-            if (this.mc.playerController.enableEverythingIsScrewedUpMode()) {
-                float var4 = 0.6666667F;
-                GL11.glScalef(1.0F, var4, 1.0F);
-            }
-
-            GL11.glMatrixMode(5888);
-            GL11.glLoadIdentity();
-            if (this.mc.gameSettings.anaglyph) {
-                GL11.glTranslatef((float) (pass * 2 - 1) * 0.1F, 0.0F, 0.0F);
-            }
-
-            GL11.glPushMatrix();
-            this.hurtCameraEffect(partialTicks);
-            if (this.mc.gameSettings.viewBobbing) {
-                this.setupViewBobbing(partialTicks);
-            }
-
-            this.enableLightmap(partialTicks);
-            this.itemRenderer.renderItemInFirstPerson(partialTicks);
-            this.disableLightmap(partialTicks);
-
-            GL11.glPopMatrix();
-
-            if (!this.mc.renderViewEntity.isPlayerSleeping()) {
-                this.itemRenderer.renderOverlays(partialTicks);
-                this.hurtCameraEffect(partialTicks);
-            }
-
-            if (this.mc.gameSettings.viewBobbing) {
-                this.setupViewBobbing(partialTicks);
-            }
+    private double zoom$getScrollStep() {
+        if (this.zoom$targetZoom >= 12.0D) {
+            return 2.0D;
         }
+
+        if (this.zoom$targetZoom >= 8.0D) {
+            return 1.5D;
+        }
+
+        if (this.zoom$targetZoom >= 4.0D) {
+            return 1.0D;
+        }
+
+        if (this.zoom$targetZoom >= 1.5D) {
+            return 0.25D;
+        }
+
+        return 0.1D;
     }
 }

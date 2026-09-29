@@ -13,8 +13,6 @@ public final class KeyBindings {
 
     private static boolean registered;
 
-    private KeyBindings() {}
-
     /**
      * Returns true only the first time this is called (used to guard array expansion).
      */

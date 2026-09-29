@@ -7,6 +7,7 @@
   ],
   "client": [
     "client.EntityRendererMixin",
+    "client.EntityPlayerSPMixin",
     "client.GameSettingsMixin",
     "client.MinecraftMixin"
   ],
